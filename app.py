@@ -1,77 +1,68 @@
-from flask import Flask, request, jsonify, send_file
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 import yt_dlp
-import os
+import json
+import asyncio
 import uuid
-import threading
-import time
+import os
 
-app = Flask(__name__)
-DOWNLOADS = "downloads"
-os.makedirs(DOWNLOADS, exist_ok=True)
+app = FastAPI()
 
-# Simple queue system
+# Allow your GitHub Pages frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://noahcode-ux.github.io"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+DOWNLOADS_DIR = "downloads"
+os.makedirs(DOWNLOADS_DIR, exist_ok=True)
+
+# Queue system
 download_queue = []
-queue_lock = threading.Lock()
 
-def process_download(task):
-    url = task["url"]
-    format_choice = task["format"]
-    task_id = task["id"]
+class DownloadRequest(BaseModel):
+    url: str
+    format: str  # 'mp3' or 'mp4'
 
-    filename = os.path.join(DOWNLOADS, f"{task_id}.%(ext)s")
+async def download_video(url, fmt, progress_callback):
     ydl_opts = {
-        'outtmpl': filename,
-        'format': 'bestaudio/best' if format_choice == "mp3" else 'bestvideo+bestaudio/best',
+        'outtmpl': os.path.join(DOWNLOADS_DIR, '%(title)s.%(ext)s'),
+        'format': 'bestaudio/best' if fmt == 'mp3' else 'bestvideo+bestaudio/best',
+        'progress_hooks': [progress_callback],
+        'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3'}] if fmt == 'mp3' else []
     }
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        ydl.download([url])
+        info = ydl.extract_info(url, download=True)
+        filename = ydl.prepare_filename(info)
+        if fmt == 'mp3':
+            filename = os.path.splitext(filename)[0] + ".mp3"
+        return filename
 
-    # Convert to mp3 if needed
-    if format_choice == "mp3":
-        mp3_file = os.path.join(DOWNLOADS, f"{task_id}.mp3")
-        os.rename(filename.replace("%(ext)s", "webm"), mp3_file)
-    task["status"] = "complete"
+@app.post("/download")
+async def start_download(request: DownloadRequest):
+    download_id = str(uuid.uuid4())
+    download_queue.append(download_id)
 
-@app.route("/download", methods=["POST"])
-def download():
-    data = request.json
-    url = data.get("url")
-    format_choice = data.get("format")
+    async def event_stream():
+        async def progress_hook(d):
+            if d['status'] == 'downloading':
+                percent = d.get('_percent_str', '0.0%').strip()
+                yield f"data: {json.dumps({'queue': download_queue.index(download_id)+1, 'progress': percent, 'status': 'downloading'})}\n\n"
+            elif d['status'] == 'finished':
+                yield f"data: {json.dumps({'queue': 0, 'progress': '100%', 'status': 'complete'})}\n\n"
 
-    task_id = str(uuid.uuid4())
-    task = {"id": task_id, "url": url, "format": format_choice, "status": "queued"}
-    
-    with queue_lock:
-        download_queue.append(task)
-        position = len(download_queue)
+        try:
+            filename = await asyncio.to_thread(download_video, request.url, request.format, progress_hook)
+        except Exception as e:
+            yield f"data: {json.dumps({'status': 'error', 'message': str(e)})}\n\n"
+        finally:
+            download_queue.remove(download_id)
 
-    # Start background thread if first in queue
-    def background_task():
-        while True:
-            with queue_lock:
-                if download_queue[0]["id"] != task_id:
-                    time.sleep(1)
-                    continue
-                download_queue.pop(0)
-            process_download(task)
-            break
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
-    threading.Thread(target=background_task, daemon=True).start()
-
-    return jsonify({"id": task_id, "queue": position, "status": "queued"})
-
-@app.route("/status/<task_id>", methods=["GET"])
-def status(task_id):
-    for task in download_queue:
-        if task["id"] == task_id:
-            position = download_queue.index(task)+1
-            return jsonify({"queue": position, "status": task["status"], "progress": 0})
-    # Check if file exists
-    for file in os.listdir(DOWNLOADS):
-        if file.startswith(task_id):
-            return jsonify({"queue": 0, "status": "complete", "progress": 100})
-    return jsonify({"status": "not found"}), 404
-
-if __name__ == "__main__":
-    app.run(debug=True)
