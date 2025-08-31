@@ -7,75 +7,17 @@
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500&display=swap" rel="stylesheet">
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
-  body { 
-    font-family: 'Orbitron', sans-serif;
-    background: linear-gradient(135deg, #0f0f0f, #1a1a1a);
-    color: #f0f0f0; 
-    display:flex; 
-    justify-content:center; 
-    align-items:center; 
-    height:100vh; 
-    overflow:hidden;
-  }
-  .container {
-    background: #111;
-    border: 2px solid #00ff99;
-    padding: 40px;
-    border-radius: 16px;
-    width: 350px;
-    text-align:center;
-    box-shadow: 0 0 20px #00ff99, 0 0 40px #00ff99;
-    animation: glow 2s infinite alternate;
-    position: relative;
-  }
-  @keyframes glow {
-    from { box-shadow: 0 0 20px #00ff99, 0 0 40px #00ff99; }
-    to { box-shadow: 0 0 30px #00ffaa, 0 0 60px #00ffaa; }
-  }
-  h1 { margin-bottom: 20px; font-size: 1.8em; color: #00ff99; text-shadow: 0 0 10px #00ff99; }
-  input, select, button {
-    width:100%; 
-    padding:10px; 
-    margin:8px 0;
-    border:none; 
-    border-radius:8px; 
-    font-size:1em;
-  }
-  input, select {
-    background:#222; 
-    color:#f0f0f0; 
-    border:1px solid #00ff99;
-    outline:none;
-  }
+  body { font-family: 'Orbitron', sans-serif; background:#111; color:#f0f0f0; display:flex; justify-content:center; align-items:center; height:100vh; }
+  .container { background:#111; border:2px solid #00ff99; padding:40px; border-radius:16px; width:350px; text-align:center; box-shadow:0 0 20px #00ff99,0 0 40px #00ff99; }
+  h1 { margin-bottom:20px; font-size:1.8em; color:#00ff99; text-shadow:0 0 10px #00ff99; }
+  input, select, button { width:100%; padding:10px; margin:8px 0; border:none; border-radius:8px; font-size:1em; }
+  input, select { background:#222; color:#f0f0f0; border:1px solid #00ff99; outline:none; }
   input:focus, select:focus { border-color:#00ffaa; box-shadow:0 0 10px #00ffaa; }
-  button {
-    background:#00ff99; 
-    color:#111; 
-    font-weight:bold; 
-    cursor:pointer;
-    transition: 0.3s;
-  }
+  button { background:#00ff99; color:#111; font-weight:bold; cursor:pointer; transition:0.3s; }
   button:hover { background:#00ffaa; transform: scale(1.05); }
-
-  /* Progress bar */
-  .progress-container {
-    width:100%;
-    background:#222;
-    border-radius:8px;
-    overflow:hidden;
-    margin-top:10px;
-    height:20px;
-  }
-  .progress-bar {
-    width:0%;
-    height:100%;
-    background:#00ff99;
-    transition: width 0.3s ease;
-  }
-
-  /* Confetti */
+  .progress-container { width:100%; background:#222; border-radius:8px; overflow:hidden; margin-top:10px; height:20px; }
+  .progress-bar { width:0%; height:100%; background:#00ff99; transition: width 0.3s ease; }
   canvas { position:absolute; top:0; left:0; pointer-events:none; }
-
   #message { margin-top:10px; font-size:0.9em; color:#00ff99; min-height:1em; }
   #queue { margin-top:5px; font-size:0.85em; color:#00ffaa; min-height:1em; }
 </style>
@@ -120,29 +62,31 @@ function createConfetti() {
     });
   }
 }
+
 function drawConfetti(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
   confettiParticles.forEach(p=>{
     ctx.beginPath();
     ctx.lineWidth = p.r;
     ctx.strokeStyle = p.color;
-    ctx.moveTo(p.x+p.tilt+ p.r/2,p.y);
-    ctx.lineTo(p.x+p.tilt,p.y+p.tilt+ p.r/2);
+    ctx.moveTo(p.x+p.tilt+p.r/2,p.y);
+    ctx.lineTo(p.x+p.tilt,p.y+p.tilt+p.r/2);
     ctx.stroke();
   });
   updateConfetti();
 }
+
 function updateConfetti(){
   confettiParticles.forEach(p=>{
     p.y += Math.cos(p.d) + 2 + p.r/2;
-    p.x += Math.sin(0);
     if (p.y > canvas.height) p.y = -10;
   });
   requestAnimationFrame(drawConfetti);
 }
+
 function launchConfetti(){ createConfetti(); drawConfetti(); }
 
-// Download & SSE
+// Download & progress
 const form = document.getElementById('downloadForm');
 const message = document.getElementById('message');
 const queueMsg = document.getElementById('queue');
@@ -159,30 +103,46 @@ form.addEventListener('submit', async (e) => {
 
   const backendURL = "https://yt-downloader-backend-pnk5.onrender.com/download";
 
-  // SSE request
-  const eventSource = new EventSource(`${backendURL}?url=${encodeURIComponent(url)}&format=${format}`);
-  
-  eventSource.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    if(data.queue !== undefined) queueMsg.textContent = `Position in queue: ${data.queue}`;
-    if(data.progress !== undefined) progressBar.style.width = data.progress;
-    if(data.status === "complete"){
-      message.textContent = "Download complete!";
-      launchConfetti();
-      eventSource.close();
-    }
-    if(data.status === "error"){
-      message.textContent = "Error: " + data.message;
-      eventSource.close();
-    }
-  };
+  try {
+    const res = await fetch(backendURL, {
+      method:"POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({url, format})
+    });
 
-  eventSource.onerror = (err) => {
-    message.textContent = "Connection error.";
-    eventSource.close();
-  };
+    if (!res.ok) throw new Error("Backend error");
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let result = '';
+
+    while(true){
+      const {value, done} = await reader.read();
+      if(done) break;
+      result += decoder.decode(value);
+      try {
+        const data = JSON.parse(result);
+        if(data.queue !== undefined) queueMsg.textContent = `Position in queue: ${data.queue}`;
+        if(data.progress !== undefined) progressBar.style.width = data.progress + "%";
+        if(data.status === "complete"){
+          message.textContent = "Download complete!";
+          progressBar.style.width = "100%";
+          launchConfetti();
+          // Provide download link
+          const a = document.createElement('a');
+          a.href = data.file_url;
+          a.download = '';
+          a.click();
+        }
+      } catch(e){ /* ignore incomplete JSON chunks */ }
+    }
+
+  } catch(err){
+    message.textContent = "Error: "+err;
+  }
 });
 </script>
 
 </body>
 </html>
+
