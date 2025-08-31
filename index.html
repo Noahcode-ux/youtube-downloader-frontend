@@ -1,196 +1,82 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>YouTube Downloader</title>
-<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500&display=swap" rel="stylesheet">
-<style>
-  * { margin:0; padding:0; box-sizing:border-box; }
-  body { 
-    font-family: 'Orbitron', sans-serif;
-    background: linear-gradient(135deg, #0f0f0f, #1a1a1a);
-    color: #f0f0f0; 
-    display:flex; 
-    justify-content:center; 
-    align-items:center; 
-    height:100vh; 
-    overflow:hidden;
-  }
-  .container {
-    background: #111;
-    border: 2px solid #00ff99;
-    padding: 40px;
-    border-radius: 16px;
-    width: 350px;
-    text-align:center;
-    box-shadow: 0 0 20px #00ff99, 0 0 40px #00ff99;
-    animation: glow 2s infinite alternate;
-    position: relative;
-  }
-  @keyframes glow {
-    from { box-shadow: 0 0 20px #00ff99, 0 0 40px #00ff99; }
-    to { box-shadow: 0 0 30px #00ffaa, 0 0 60px #00ffaa; }
-  }
-  h1 { margin-bottom: 20px; font-size: 1.8em; color: #00ff99; text-shadow: 0 0 10px #00ff99; }
-  input, select, button {
-    width:100%; 
-    padding:10px; 
-    margin:8px 0;
-    border:none; 
-    border-radius:8px; 
-    font-size:1em;
-  }
-  input, select {
-    background:#222; 
-    color:#f0f0f0; 
-    border:1px solid #00ff99;
-    outline:none;
-  }
-  input:focus, select:focus { border-color:#00ffaa; box-shadow:0 0 10px #00ffaa; }
-  button {
-    background:#00ff99; 
-    color:#111; 
-    font-weight:bold; 
-    cursor:pointer;
-    transition: 0.3s;
-  }
-  button:hover { background:#00ffaa; transform: scale(1.05); }
-
-  /* Progress bar */
-  .progress-container {
-    width:100%;
-    background:#222;
-    border-radius:8px;
-    overflow:hidden;
-    margin-top:10px;
-    height:20px;
-  }
-  .progress-bar {
-    width:0%;
-    height:100%;
-    background:#00ff99;
-    transition: width 0.3s ease;
-  }
-
-  /* Confetti */
-  canvas { position:absolute; top:0; left:0; pointer-events:none; }
-
-  #message { margin-top:10px; font-size:0.9em; color:#00ff99; min-height:1em; }
-  #queue { margin-top:5px; font-size:0.85em; color:#00ffaa; min-height:1em; }
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Cyberpunk YT Downloader</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
 </head>
-<body>
+<body class="bg-black text-green-400 font-mono flex flex-col items-center justify-center min-h-screen">
+  <div class="max-w-lg w-full p-6 bg-gray-900 rounded-2xl shadow-2xl border border-green-400">
+    <h1 class="text-2xl mb-4 text-center">🎬 Cyberpunk YT Downloader</h1>
 
-<canvas id="confetti"></canvas>
+    <input id="url" type="text" placeholder="Enter YouTube URL"
+      class="w-full p-2 mb-4 bg-black border border-green-500 rounded"/>
 
-<div class="container">
-  <h1>YouTube Downloader</h1>
-  <form id="downloadForm">
-    <input type="text" id="url" placeholder="Paste YouTube URL" required>
-    <select id="format">
-      <option value="mp4">MP4</option>
-      <option value="mp3">MP3</option>
+    <select id="format" class="w-full p-2 mb-4 bg-black border border-green-500 rounded">
+      <option value="mp4">Video (MP4)</option>
+      <option value="mp3">Audio (MP3)</option>
     </select>
-    <button type="submit">Download</button>
-    <div class="progress-container"><div class="progress-bar" id="progressBar"></div></div>
-    <p id="message"></p>
-    <p id="queue"></p>
-  </form>
-</div>
 
-<script>
-// Confetti setup
-const canvas = document.getElementById('confetti');
-const ctx = canvas.getContext('2d');
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
-let confettiParticles = [];
+    <button onclick="startDownload()"
+      class="w-full p-2 bg-green-600 hover:bg-green-500 rounded-lg">Download</button>
 
-function createConfetti() {
-  for (let i=0;i<150;i++){
-    confettiParticles.push({
-      x: Math.random()*canvas.width,
-      y: Math.random()*canvas.height-100,
-      r: Math.random()*6+2,
-      d: Math.random()*10+2,
-      color: `hsl(${Math.random()*360},100%,50%)`,
-      tilt: Math.random()*10-10
-    });
-  }
-}
-function drawConfetti(){
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  confettiParticles.forEach(p=>{
-    ctx.beginPath();
-    ctx.lineWidth = p.r;
-    ctx.strokeStyle = p.color;
-    ctx.moveTo(p.x+p.tilt+ p.r/2,p.y);
-    ctx.lineTo(p.x+p.tilt,p.y+p.tilt+ p.r/2);
-    ctx.stroke();
-  });
-  updateConfetti();
-}
-function updateConfetti(){
-  confettiParticles.forEach(p=>{
-    p.y += Math.cos(p.d) + 2 + p.r/2;
-    p.x += Math.sin(0);
-    if (p.y > canvas.height) p.y = -10;
-  });
-  requestAnimationFrame(drawConfetti);
-}
-function launchConfetti(){ createConfetti(); drawConfetti(); }
+    <div id="status" class="mt-4 text-sm"></div>
+    <div class="w-full bg-gray-800 rounded-full h-3 mt-2">
+      <div id="progressBar" class="bg-green-400 h-3 rounded-full transition-all" style="width:0%"></div>
+    </div>
+  </div>
 
-// Download & progress
-const form = document.getElementById('downloadForm');
-const message = document.getElementById('message');
-const queueMsg = document.getElementById('queue');
-const progressBar = document.getElementById('progressBar');
+  <script>
+    const BACKEND = "https://yt-downloader-backend-pnk5.onrender.com";
 
-form.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const url = document.getElementById('url').value;
-  const format = document.getElementById('format').value;
+    async function startDownload() {
+      const url = document.getElementById("url").value;
+      const format = document.getElementById("format").value;
+      if (!url) return alert("Please enter a YouTube URL");
 
-  message.textContent = "Waiting for backend...";
-  progressBar.style.width = "0%";
-  queueMsg.textContent = "";
+      document.getElementById("status").innerText = "⏳ Starting download...";
+      document.getElementById("progressBar").style.width = "0%";
 
-  const backendURL = "https://your-backend.onrender.com/download"; // your Render backend
+      // Step 1: Ask backend to start download
+      let res = await fetch(`${BACKEND}/download?url=${encodeURIComponent(url)}&format=${format}`);
+      let data = await res.json();
 
-  // Start download
-  try {
-    // 1️⃣ Send request
-    const res = await fetch(backendURL, {
-      method:"POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({url, format})
-    });
-
-    // 2️⃣ Backend responds with JSON: {queue: 2, progress: 0-100, status: "downloading" or "complete"}
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let result = '';
-    while(true){
-      const {value, done} = await reader.read();
-      if(done) break;
-      result += decoder.decode(value);
-      try {
-        const data = JSON.parse(result);
-        if(data.queue !== undefined) queueMsg.textContent = `Position in queue: ${data.queue}`;
-        if(data.progress !== undefined) progressBar.style.width = data.progress + "%";
-        if(data.status === "complete"){
-          message.textContent = "Download complete!";
-          progressBar.style.width = "100%";
-          launchConfetti();
-        }
-      } catch(e){ /* not full JSON yet */ }
+      const videoId = data.video_id;
+      pollProgress(videoId);
     }
-  } catch(err){
-    message.textContent = "Error: "+err;
-  }
-});
-</script>
 
+    async function pollProgress(videoId) {
+      let interval = setInterval(async () => {
+        let res = await fetch(`${BACKEND}/progress/${videoId}`);
+        let data = await res.json();
+
+        if (data.status === "downloading") {
+          document.getElementById("status").innerText =
+            `Downloading... ${data.downloaded} | Speed: ${data.speed} | ETA: ${data.eta}`;
+          document.getElementById("progressBar").style.width = data.downloaded;
+        }
+
+        if (data.status === "ready") {
+          clearInterval(interval);
+          document.getElementById("status").innerText = "✅ Download complete!";
+          document.getElementById("progressBar").style.width = "100%";
+
+          // 🎉 Confetti
+          confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+
+          // Auto-download file
+          let link = document.createElement("a");
+          link.href = `${BACKEND}/file/${videoId}`;
+          link.download = data.file || "download";
+          link.click();
+        }
+      }, 2000);
+    }
+  </script>
 </body>
 </html>
+
+
+
