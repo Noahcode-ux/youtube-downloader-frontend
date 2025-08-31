@@ -26,6 +26,7 @@
     text-align:center;
     box-shadow: 0 0 20px #00ff99, 0 0 40px #00ff99;
     animation: glow 2s infinite alternate;
+    position: relative;
   }
   @keyframes glow {
     from { box-shadow: 0 0 20px #00ff99, 0 0 40px #00ff99; }
@@ -55,10 +56,33 @@
     transition: 0.3s;
   }
   button:hover { background:#00ffaa; transform: scale(1.05); }
+
+  /* Progress bar */
+  .progress-container {
+    width:100%;
+    background:#222;
+    border-radius:8px;
+    overflow:hidden;
+    margin-top:10px;
+    height:20px;
+  }
+  .progress-bar {
+    width:0%;
+    height:100%;
+    background:#00ff99;
+    transition: width 0.3s ease;
+  }
+
+  /* Confetti */
+  canvas { position:absolute; top:0; left:0; pointer-events:none; }
+
   #message { margin-top:10px; font-size:0.9em; color:#00ff99; min-height:1em; }
+  #queue { margin-top:5px; font-size:0.85em; color:#00ffaa; min-height:1em; }
 </style>
 </head>
 <body>
+
+<canvas id="confetti"></canvas>
 
 <div class="container">
   <h1>YouTube Downloader</h1>
@@ -69,37 +93,102 @@
       <option value="mp3">MP3</option>
     </select>
     <button type="submit">Download</button>
+    <div class="progress-container"><div class="progress-bar" id="progressBar"></div></div>
     <p id="message"></p>
+    <p id="queue"></p>
   </form>
 </div>
 
 <script>
+// Confetti setup
+const canvas = document.getElementById('confetti');
+const ctx = canvas.getContext('2d');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+let confettiParticles = [];
+
+function createConfetti() {
+  for (let i=0;i<150;i++){
+    confettiParticles.push({
+      x: Math.random()*canvas.width,
+      y: Math.random()*canvas.height-100,
+      r: Math.random()*6+2,
+      d: Math.random()*10+2,
+      color: `hsl(${Math.random()*360},100%,50%)`,
+      tilt: Math.random()*10-10
+    });
+  }
+}
+function drawConfetti(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  confettiParticles.forEach(p=>{
+    ctx.beginPath();
+    ctx.lineWidth = p.r;
+    ctx.strokeStyle = p.color;
+    ctx.moveTo(p.x+p.tilt+ p.r/2,p.y);
+    ctx.lineTo(p.x+p.tilt,p.y+p.tilt+ p.r/2);
+    ctx.stroke();
+  });
+  updateConfetti();
+}
+function updateConfetti(){
+  confettiParticles.forEach(p=>{
+    p.y += Math.cos(p.d) + 2 + p.r/2;
+    p.x += Math.sin(0);
+    if (p.y > canvas.height) p.y = -10;
+  });
+  requestAnimationFrame(drawConfetti);
+}
+function launchConfetti(){ createConfetti(); drawConfetti(); }
+
+// Download & progress
 const form = document.getElementById('downloadForm');
 const message = document.getElementById('message');
+const queueMsg = document.getElementById('queue');
+const progressBar = document.getElementById('progressBar');
 
-form.addEventListener('submit', (e) => {
+form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const url = document.getElementById('url').value;
   const format = document.getElementById('format').value;
-  message.textContent = "Processing...";
 
-  // Replace with your Render backend URL
-  const backendURL = "https://your-backend.onrender.com/download";
+  message.textContent = "Waiting for backend...";
+  progressBar.style.width = "0%";
+  queueMsg.textContent = "";
 
-  fetch(backendURL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ url, format })
-  })
-  .then(res => res.blob())
-  .then(blob => {
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `video.${format}`;
-    link.click();
-    message.textContent = "Download complete!";
-  })
-  .catch(err => message.textContent = "Error: " + err);
+  const backendURL = "https://your-backend.onrender.com/download"; // your Render backend
+
+  // Start download
+  try {
+    // 1️⃣ Send request
+    const res = await fetch(backendURL, {
+      method:"POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({url, format})
+    });
+
+    // 2️⃣ Backend responds with JSON: {queue: 2, progress: 0-100, status: "downloading" or "complete"}
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let result = '';
+    while(true){
+      const {value, done} = await reader.read();
+      if(done) break;
+      result += decoder.decode(value);
+      try {
+        const data = JSON.parse(result);
+        if(data.queue !== undefined) queueMsg.textContent = `Position in queue: ${data.queue}`;
+        if(data.progress !== undefined) progressBar.style.width = data.progress + "%";
+        if(data.status === "complete"){
+          message.textContent = "Download complete!";
+          progressBar.style.width = "100%";
+          launchConfetti();
+        }
+      } catch(e){ /* not full JSON yet */ }
+    }
+  } catch(err){
+    message.textContent = "Error: "+err;
+  }
 });
 </script>
 
